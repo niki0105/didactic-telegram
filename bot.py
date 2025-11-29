@@ -15,8 +15,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ID администратора (@zhdanova_eliz)
-ADMIN_ID = 8326248354
+
+# ID администраторов
+ADMIN_IDS = [8326248354, 1054023698, 890563826, 6332321011, 7801938560]
 
 # ID группового чата (из https://t.me/c/3159637873/...)
 GROUP_CHAT_ID = -1003159637873
@@ -166,48 +167,60 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
     # ========== ОБРАБОТКА ОТВЕТА АДМИНА ==========
-    if user.id == ADMIN_ID and update.message.reply_to_message:
-        replied_message = update.message.reply_to_message
+    # Админ отвечает через Reply на сообщение бота в группе
+    logger.info(f"Проверка: user.id={user.id}, ADMIN_IDS={ADMIN_IDS}, has_reply={bool(update.message.reply_to_message)}")
+    
+    if user.id in ADMIN_IDS and update.message.reply_to_message:
+        replied = update.message.reply_to_message
+        logger.info(f"Есть reply. replied.from_user.id={replied.from_user.id}, bot.id={context.bot.id}")
         
-        # Проверяем, что это reply на сообщение от бота
-        if replied_message.from_user.id == context.bot.id:
-            replied_text = replied_message.text
+        # Проверяем, что это ответ на сообщение от бота
+        if replied.from_user.id == context.bot.id:
+            replied_text = replied.text or replied.caption or ""
+            logger.info(f"Это сообщение от бота! Ищу ID в тексте: {replied_text[:100]}")
             
-            try:
-                # Ищем скрытый ID пользователя в конце сообщения
-                user_id_match = re.search(r'\[ID:(\d+)\]', replied_text)
-                
-                if user_id_match:
-                    target_user_id = int(user_id_match.group(1))
-                    admin_response = update.message.text
-                    
-                    # Отправляем ответ пользователю БЕЗ Markdown
-                    await context.bot.send_message(
-                        chat_id=target_user_id,
-                        text=f"💬 Ответ от NUDA Agency:\n\n{admin_response}\n\nЕсли у вас есть ещё вопросы, просто напишите здесь"
+            # Пытаемся найти ID несколькими способами
+            user_id = None
+            
+            # Способ 1: Явный формат [ID:123456789]
+            user_id_match = re.search(r'\[ID:(\d+)\]', replied_text)
+            if user_id_match:
+                user_id = int(user_id_match.group(1))
+                logger.info(f"Найден ID способом 1: {user_id}")
+            
+            # Способ 2: Если ID не найден, проверяем в replied_text по словам
+            if not user_id:
+                numbers = re.findall(r'\b(\d{9,})\b', replied_text)
+                logger.info(f"Найденные числа: {numbers}")
+                if numbers:
+                    user_id = int(numbers[-1])  # Берём последнее число (обычно ID)
+                    logger.info(f"Найден ID способом 2: {user_id}")
+            
+            logger.info(f"Финальный user_id: {user_id}")
+            
+            if user_id:
+                admin_response = update.message.text or update.message.caption or "Без текста"
+                logger.info(f"Отправляю ответ пользователю {user_id}: {admin_response}")
+                try:
+                    result = await context.bot.send_message(
+                        chat_id=user_id,
+                        text=f"Ответ от NUDA Agency:\n\n{admin_response}\n\nЕсть ещё вопросы? Пишите сюда!"
                     )
-                    
-                    # Подтверждение админу
-                    await update.message.reply_text(
-                        f"✅ Ответ отправлен пользователю"
-                    )
-                    
-                    logger.info(f"Админ ответил пользователю {target_user_id}")
-                    return
-                else:
-                    await update.message.reply_text(
-                        "❌ Не удалось найти ID пользователя в сообщении"
-                    )
-                    return
-                    
-            except Exception as e:
-                logger.error(f"Ошибка при обработке ответа админа: {e}")
-                await update.message.reply_text(
-                    "❌ Ошибка при отправке ответа. Попробуйте ещё раз."
-                )
+                    logger.info(f"✅ Ответ успешно отправлен! Message ID: {result.message_id}")
+                    await update.message.reply_text("✅ Ответ отправлен пользователю")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка при отправке ответа пользователю {user_id}: {e}", exc_info=True)
+                    await update.message.reply_text(f"❌ Ошибка: {e}")
+                return
+            else:
+                logger.warning("⚠️ ID не найден в сообщении")
                 return
     
     # ========== ОБЫЧНАЯ ОБРАБОТКА СООБЩЕНИЙ ==========
+    # Обрабатываем только в личных чатах
+    if update.message.chat.type != "private":
+        return
+    
     section = context.user_data.get('section')
     text = update.message.text
     
@@ -252,47 +265,49 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_hint = ""
     user_id_tag = ""
     
-    # Добавляем подсказку и скрытый ID только для Поддержки и Моделей
+    # Добавляем подсказку и ID только для Поддержки и Моделей
     if section in ['Поддержка', 'Для моделей']:
-        reply_hint = f"\n💡 Чтобы ответить, нажмите Reply на это сообщение"
-        user_id_tag = f"\n[ID:{user.id}]"  # Скрытый тег для поиска
+        reply_hint = "\n\nЧтобы ответить пользователю — нажмите Reply на это сообщение"
+        user_id_tag = f"\n[ID:{user.id}]"
     
     admin_message = (
         f"{admin_prefix}"
-        f"📨 Новый запрос\n\n"
-        f"👤 Username: @{user.username or 'без username'}\n"
-        f"📂 Раздел: {section}\n"
-        f"🕐 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"Новый запрос\n\n"
+        f"Username: @{user.username or 'без username'}\n"
+        f"Раздел: {section}\n"
+        f"Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
         f"Сообщение:\n{text}"
         f"{reply_hint}"
         f"{user_id_tag}"
     )
     
-    # Отправляем в зависимости от раздела БЕЗ форматирования
+    # Отправляем в зависимости от раздела
     try:
         if section == 'Поддержка':
             await context.bot.send_message(
                 chat_id=GROUP_CHAT_ID,
                 message_thread_id=SUPPORT_THREAD_ID,
-                text=admin_message
+                text=admin_message,
+                disable_web_page_preview=True
             )
         elif section == 'Для моделей':
             await context.bot.send_message(
                 chat_id=GROUP_CHAT_ID,
                 message_thread_id=MODELS_THREAD_ID,
-                text=admin_message
+                text=admin_message,
+                disable_web_page_preview=True
             )
         elif section == 'Для заказчиков':
-            # Отправляем в личку @zhdanova_eliz (ADMIN_ID)
             await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=admin_message
+                chat_id=ADMIN_IDS[0],
+                text=admin_message,
+                disable_web_page_preview=True
             )
-            # Дублируем в группу
             await context.bot.send_message(
                 chat_id=GROUP_CHAT_ID,
                 message_thread_id=CUSTOMERS_THREAD_ID,
-                text=admin_message
+                text=admin_message,
+                disable_web_page_preview=True
             )
         logger.info(f"Сообщение от {user.id} отправлено (раздел: {section})")
     except Exception as e:
@@ -340,7 +355,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Главная функция запуска бота"""
     # Токен бота
-    BOT_TOKEN = os.getenv('BOT_TOKEN')
+    BOT_TOKEN = os.getenv('BOT_TOKEN', '8209426867:AAGIhJGcMuwQPxAX99frjPomQxK6MW3KQ7o')
     
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не задан!")
@@ -377,4 +392,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
