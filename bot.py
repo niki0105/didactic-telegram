@@ -5,6 +5,10 @@ from datetime import datetime, time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
+
+GIF_PATH = os.path.join(os.path.dirname(__file__), "nuda.gif")
+
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -80,7 +84,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Отправляем GIF
     try:
         await update.message.reply_animation(
-            "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif"
+            animation=open("nuda.gif", "rb")
         )
     except Exception as e:
         logger.warning(f"Не удалось отправить GIF: {e}")
