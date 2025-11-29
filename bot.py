@@ -355,7 +355,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Главная функция запуска бота"""
     # Токен бота
-    BOT_TOKEN = os.getenv('BOT_TOKEN', '8209426867:AAGIhJGcMuwQPxAX99frjPomQxK6MW3KQ7o')
+    BOT_TOKEN = os.getenv('BOT_TOKEN')
     
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не задан!")
@@ -392,3 +392,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
