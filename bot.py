@@ -15,8 +15,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ID администратора
-ADMIN_ID = 6332321011
+# ID администратора (@zhdanova_eliz)
+ADMIN_ID = 8326248354
+
+# ID группового чата (из https://t.me/c/3159637873/...)
+GROUP_CHAT_ID = -1003159637873
+
+# ID тем (threads) в групповом чате
+SUPPORT_THREAD_ID = 242
+MODELS_THREAD_ID = 241
+CUSTOMERS_THREAD_ID = 243
 
 # Шаблон анкеты для заказчиков
 CUSTOMER_TEMPLATE = """Имя:
@@ -260,15 +268,35 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{user_id_tag}"
     )
     
-    # Отправляем администратору БЕЗ форматирования
+    # Отправляем в зависимости от раздела БЕЗ форматирования
     try:
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=admin_message
-        )
-        logger.info(f"Сообщение от {user.id} отправлено админу")
+        if section == 'Поддержка':
+            await context.bot.send_message(
+                chat_id=GROUP_CHAT_ID,
+                message_thread_id=SUPPORT_THREAD_ID,
+                text=admin_message
+            )
+        elif section == 'Для моделей':
+            await context.bot.send_message(
+                chat_id=GROUP_CHAT_ID,
+                message_thread_id=MODELS_THREAD_ID,
+                text=admin_message
+            )
+        elif section == 'Для заказчиков':
+            # Отправляем в личку @zhdanova_eliz (ADMIN_ID)
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=admin_message
+            )
+            # Дублируем в группу
+            await context.bot.send_message(
+                chat_id=GROUP_CHAT_ID,
+                message_thread_id=CUSTOMERS_THREAD_ID,
+                text=admin_message
+            )
+        logger.info(f"Сообщение от {user.id} отправлено (раздел: {section})")
     except Exception as e:
-        logger.error(f"Ошибка отправки админу: {e}")
+        logger.error(f"Ошибка отправки: {e}")
     
     # Ответ пользователю (только в рабочее время)
     if is_working_hours():
@@ -349,3 +377,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
